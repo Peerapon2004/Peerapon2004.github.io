@@ -4,17 +4,46 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
   <title>Face Tracking AR</title>
 
   <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-face-aframe.prod.js"></script>
-  <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-extras@7.5.4/dist/aframe-extras.min.js"></script>
 
   <style>
-    body {
+    html, body {
       margin: 0;
+      width: 100%;
+      height: 100%;
       overflow: hidden;
+      background: #111;
+      font-family: Arial, sans-serif;
+     a-scene {
+  position: fixed !important;
+  top: 0;
+  left: 0;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 1;
+  background: transparent !important;
+}
+
+.mindar-face-video {
+  position: fixed !important;
+  top: 0;
+  left: 0;
+  width: 100vw !important;
+  height: 100vh !important;
+  object-fit: cover !important;
+  z-index: 0 !important;
+}
+
+a-scene canvas {
+  position: fixed !important;
+  top: 0;
+  left: 0;
+  width: 100vw !important;
+  height: 100vh !important;
+}
     }
 
     #hint {
@@ -23,53 +52,66 @@
       left: 12px;
       right: 12px;
       z-index: 10;
-      padding: 10px;
       color: white;
-      background: rgba(0, 0, 0, 0.7);
+      background: #222d;
+      padding: 12px;
       border-radius: 8px;
       text-align: center;
-      font-family: Arial, sans-serif;
+    }
+
+    #startButton {
+      position: fixed;
+      z-index: 20;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      padding: 16px 22px;
+      font-size: 17px;
+      border: 0;
+      border-radius: 10px;
+      cursor: pointer;
     }
   </style>
 </head>
 
 <body>
-  <div id="hint">กำลังเริ่ม Face Tracking...</div>
+  <div id="hint">กำลังเตรียมระบบ Face Tracking...</div>
+  <button id="startButton">เริ่มกล้อง</button>
 
   <a-scene
-    mindar-face
+    mindar-face="autoStart: false"
     embedded
     color-space="sRGB"
-    renderer="colorManagement: true; physicallyCorrectLights: true"
+    renderer="colorManagement: true, physicallyCorrectLights"
     vr-mode-ui="enabled: false"
     device-orientation-permission-ui="enabled: false">
 
     <a-assets>
       <a-asset-item
-        id="glassesModel"
+        id="heartGlasses"
         src="./heart-shaped_glasses.glb">
       </a-asset-item>
 
       <a-asset-item
-        id="hatModel"
+        id="pirateHat"
         src="./pirate_hat.glb">
       </a-asset-item>
     </a-assets>
 
-    <!-- แว่น: anchor 168 อยู่บริเวณกึ่งกลางใบหน้า -->
+    <!-- แว่นหัวใจ -->
     <a-entity mindar-face-target="anchorIndex: 168">
       <a-gltf-model
-        src="#glassesModel"
+        src="#heartGlasses"
         position="0 0 0"
         rotation="0 0 0"
         scale="0.01 0.01 0.01">
       </a-gltf-model>
     </a-entity>
 
-    <!-- หมวก: anchor 10 อยู่บริเวณหน้าผาก -->
+    <!-- หมวกโจรสลัด -->
     <a-entity mindar-face-target="anchorIndex: 10">
       <a-gltf-model
-        src="#hatModel"
+        src="#pirateHat"
         position="0 0.2 0"
         rotation="0 0 0"
         scale="0.01 0.01 0.01">
@@ -77,19 +119,58 @@
     </a-entity>
 
     <a-camera active="false" position="0 0 0"></a-camera>
-
   </a-scene>
 
   <script>
     const scene = document.querySelector('a-scene');
     const hint = document.getElementById('hint');
+    const button = document.getElementById('startButton');
 
-    scene.addEventListener('arReady', () => {
-      hint.textContent = 'กล้องพร้อมแล้ว กรุณาหันหน้าเข้าหากล้อง';
+    let arSystem;
+    let started = false;
+
+    scene.addEventListener('loaded', () => {
+      arSystem = scene.systems['mindar-face-system'];
+      hint.textContent = 'กดปุ่มเริ่มกล้อง แล้วอนุญาตการใช้กล้อง';
     });
 
-    scene.addEventListener('arError', () => {
-      hint.textContent = 'เปิดกล้องไม่สำเร็จ กรุณาตรวจสอบสิทธิ์กล้อง';
+    button.addEventListener('click', async () => {
+      if (started) return;
+
+      button.disabled = true;
+      hint.textContent = 'กำลังเปิดกล้อง...';
+
+      try {
+        arSystem = arSystem ||
+          scene.systems['mindar-face-system'];
+
+        if (!arSystem) {
+          throw new Error('ระบบ MindAR ยังโหลดไม่เสร็จ');
+        }
+
+        started = true;
+        await arSystem.start();
+      } catch (error) {
+        console.error(error);
+        started = false;
+        button.disabled = false;
+        hint.textContent =
+          'เปิดกล้องไม่ได้ ตรวจสอบสิทธิ์กล้องและปิดแอปที่ใช้กล้อง';
+      }
+    });
+
+    scene.addEventListener('arReady', () => {
+      hint.textContent = 'กล้องทำงานแล้ว กรุณาหันหน้าเข้าหากล้อง';
+      button.style.display = 'none';
+    });
+
+    scene.addEventListener('arError', (event) => {
+      console.error('MindAR error:', event);
+      hint.textContent =
+        'เริ่มกล้องไม่สำเร็จ ตรวจสอบการตั้งค่ากล้องของเบราว์เซอร์';
+      button.style.display = 'block';
+      button.disabled = false;
+      started = false;
     });
   </script>
 </body>
