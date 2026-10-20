@@ -1,105 +1,98 @@
-
 <!DOCTYPE html>
 <html lang="th">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Face Tracking AR</title>
+  <title>Face Tracking AR - Police Hat & Heart Glasses</title>
 
+  <!-- A-Frame -->
   <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+
+  <!-- MindAR Face Tracking -->
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-face-aframe.prod.js"></script>
 
-  
-<style>
-  html, body {
-    margin: 0;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-    background: #111;
-    font-family: Arial, sans-serif;
-  }
+  <style>
+    * {
+      box-sizing: border-box;
+    }
 
-  a-scene {
-    position: fixed !important;
-    inset: 0;
-    width: 100vw !important;
-    height: 100vh !important;
-    background: transparent !important;
-    z-index: 1;
-  }
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+      background: #111;
+    }
 
-  .mindar-face-video {
-    position: fixed !important;
-    inset: 0;
-    width: 100vw !important;
-    height: 100vh !important;
-    object-fit: cover !important;
-    z-index: 0 !important;
-  }
+    /* ไม่กำหนด z-index หรือ position ให้ video/canvas
+       เพื่อไม่ให้รบกวนระบบจัดชั้นภาพของ MindAR */
 
-  a-scene canvas {
-    position: fixed !important;
-    inset: 0;
-    width: 100vw !important;
-    height: 100vh !important;
-  }
+    #hint {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      right: 12px;
+      z-index: 9999;
+      padding: 12px 16px;
+      color: white;
+      background: rgba(0, 0, 0, 0.65);
+      border-radius: 10px;
+      text-align: center;
+      font-size: 14px;
+      pointer-events: none;
+    }
 
-  #hint {
-    position: fixed;
-    top: 12px;
-    left: 12px;
-    right: 12px;
-    z-index: 10;
-    color: white;
-    background: #222d;
-    padding: 12px;
-    border-radius: 8px;
-    text-align: center;
-  }
-
-  #startButton {
-    position: fixed;
-    z-index: 20;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    padding: 16px 22px;
-    font-size: 17px;
-    border: 0;
-    border-radius: 10px;
-    cursor: pointer;
-  }
-</style>
+    #retryButton {
+      display: none;
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 10000;
+      padding: 14px 22px;
+      border: none;
+      border-radius: 10px;
+      background: white;
+      color: #111;
+      font-size: 16px;
+      cursor: pointer;
+    }
+  </style>
 </head>
 
 <body>
-  <div id="hint">กำลังเตรียมระบบ Face Tracking...</div>
-  <button id="startButton">เริ่มกล้อง</button>
+  <div id="hint">กำลังโหลด Face Tracking...</div>
+  <button id="retryButton">โหลดหน้าเว็บใหม่</button>
 
   <a-scene
-    mindar-face="autoStart: false"
+    mindar-face
     embedded
     color-space="sRGB"
-    renderer="colorManagement: true, physicallyCorrectLights"
+    renderer="colorManagement: true, physicallyCorrectLights: true"
     vr-mode-ui="enabled: false"
     device-orientation-permission-ui="enabled: false">
 
     <a-assets>
+      <!-- แว่นหัวใจ -->
       <a-asset-item
         id="heartGlasses"
         src="./heart-shaped_glasses.glb">
       </a-asset-item>
 
+      <!-- หมวกตำรวจ -->
       <a-asset-item
-        id="pirateHat"
-        src="./pirate_hat.glb">
+        id="policeHat"
+        src="./police_hat.glb">
       </a-asset-item>
     </a-assets>
 
-    <!-- แว่นหัวใจ -->
+    <!-- แว่นหัวใจ: จุดติดตามบริเวณกึ่งกลางดวงตา -->
     <a-entity mindar-face-target="anchorIndex: 168">
       <a-gltf-model
+        id="glasses"
         src="#heartGlasses"
         position="0 0 0"
         rotation="0 0 0"
@@ -107,70 +100,71 @@
       </a-gltf-model>
     </a-entity>
 
-    <!-- หมวกโจรสลัด -->
+    <!-- หมวกตำรวจ: จุดติดตามบริเวณหน้าผาก -->
     <a-entity mindar-face-target="anchorIndex: 10">
       <a-gltf-model
-        src="#pirateHat"
+        id="policeHatModel"
+        src="#policeHat"
         position="0 0.2 0"
         rotation="0 0 0"
         scale="0.01 0.01 0.01">
       </a-gltf-model>
     </a-entity>
 
-    <a-camera active="false" position="0 0 0"></a-camera>
+    <!-- กล้องสำหรับฉาก AR -->
+    <a-camera
+      active="false"
+      position="0 0 0">
+    </a-camera>
+
   </a-scene>
 
   <script>
-    const scene = document.querySelector('a-scene');
-    const hint = document.getElementById('hint');
-    const button = document.getElementById('startButton');
+    const scene = document.querySelector("a-scene");
+    const hint = document.getElementById("hint");
+    const retryButton = document.getElementById("retryButton");
 
-    let arSystem;
-    let started = false;
-
-    scene.addEventListener('loaded', () => {
-      arSystem = scene.systems['mindar-face-system'];
-      hint.textContent = 'กดปุ่มเริ่มกล้อง แล้วอนุญาตการใช้กล้อง';
+    retryButton.addEventListener("click", () => {
+      window.location.reload();
     });
 
-    button.addEventListener('click', async () => {
-      if (started) return;
-
-      button.disabled = true;
-      hint.textContent = 'กำลังเปิดกล้อง...';
-
-      try {
-        arSystem = arSystem ||
-          scene.systems['mindar-face-system'];
-
-        if (!arSystem) {
-          throw new Error('ระบบ MindAR ยังโหลดไม่เสร็จ');
-        }
-
-        started = true;
-        await arSystem.start();
-      } catch (error) {
-        console.error(error);
-        started = false;
-        button.disabled = false;
-        hint.textContent =
-          'เปิดกล้องไม่ได้ ตรวจสอบสิทธิ์กล้องและปิดแอปที่ใช้กล้อง';
-      }
-    });
-
-    scene.addEventListener('arReady', () => {
-      hint.textContent = 'กล้องทำงานแล้ว กรุณาหันหน้าเข้าหากล้อง';
-      button.style.display = 'none';
-    });
-
-    scene.addEventListener('arError', (event) => {
-      console.error('MindAR error:', event);
+    scene.addEventListener("loaded", () => {
       hint.textContent =
-        'เริ่มกล้องไม่สำเร็จ ตรวจสอบการตั้งค่ากล้องของเบราว์เซอร์';
-      button.style.display = 'block';
-      button.disabled = false;
-      started = false;
+        "กำลังเริ่มกล้อง กรุณาอนุญาตการใช้กล้อง";
     });
+
+    scene.addEventListener("arReady", () => {
+      hint.textContent =
+        "กล้องพร้อมแล้ว กรุณาหันหน้าเข้าหากล้อง";
+      retryButton.style.display = "none";
+    });
+
+    scene.addEventListener("arError", (event) => {
+      console.error("MindAR error:", event);
+      hint.textContent =
+        "เริ่มกล้องไม่สำเร็จ กรุณาตรวจสอบสิทธิ์กล้อง";
+      retryButton.style.display = "block";
+    });
+
+    document.querySelector("#heartGlasses")
+      .addEventListener("loaded", () => {
+        console.log("Heart glasses model loaded");
+      });
+
+    document.querySelector("#heartGlasses")
+      .addEventListener("error", (event) => {
+        console.error("Heart glasses failed to load", event);
+      });
+
+    document.querySelector("#policeHat")
+      .addEventListener("loaded", () => {
+        console.log("Police hat model loaded");
+      });
+
+    document.querySelector("#policeHat")
+      .addEventListener("error", (event) => {
+        console.error("Police hat failed to load", event);
+      });
   </script>
 </body>
 </html>
