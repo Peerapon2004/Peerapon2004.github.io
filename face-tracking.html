@@ -1,0 +1,136 @@
+
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>Face Tracking AR - Heart Glasses & Pirate Hat</title>
+
+  <!-- A-Frame -->
+  <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+
+  <!-- MindAR Face Tracking -->
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-face-aframe.prod.js"></script>
+
+  <!-- GLB animation support -->
+  <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-extras@7.5.4/dist/aframe-extras.min.js"></script>
+
+  <style>
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+      background: #111;
+    }
+
+    #hint {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      right: 12px;
+      z-index: 10;
+      padding: 12px;
+      color: white;
+      background: rgba(0, 0, 0, 0.7);
+      border-radius: 10px;
+      text-align: center;
+      font-size: 14px;
+      pointer-events: none;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="hint">กำลังโหลด Face Tracking...</div>
+
+  <a-scene
+    mindar-face
+    embedded
+    color-space="sRGB"
+    renderer="colorManagement: true; physicallyCorrectLights: true"
+    vr-mode-ui="enabled: false"
+    device-orientation-permission-ui="enabled: false">
+
+    <a-assets>
+      <!-- แว่นหัวใจ -->
+      <a-asset-item
+        id="heartGlasses"
+        src="./heart-shaped_glasses.glb">
+      </a-asset-item>
+
+      <!-- หมวกโจรสลัด -->
+      <a-asset-item
+        id="pirateHat"
+        src="./pirate_hat.glb">
+      </a-asset-item>
+    </a-assets>
+
+    <!-- แว่นหัวใจ: บริเวณกึ่งกลางใบหน้า -->
+    <a-entity mindar-face-target="anchorIndex: 168">
+      <a-gltf-model
+        id="glasses"
+        src="#heartGlasses"
+        position="0 0 0"
+        rotation="0 0 0"
+        scale="0.01 0.01 0.01">
+      </a-gltf-model>
+    </a-entity>
+
+    <!-- หมวกโจรสลัด: บริเวณหน้าผาก -->
+    <a-entity mindar-face-target="anchorIndex: 10">
+      <a-gltf-model
+        id="hat"
+        src="#pirateHat"
+        position="0 0.2 0"
+        rotation="0 0 0"
+        scale="0.01 0.01 0.01">
+      </a-gltf-model>
+    </a-entity>
+
+    <!-- กล้อง Face Tracking -->
+    <a-camera
+      active="false"
+      position="0 0 0">
+    </a-camera>
+
+  </a-scene>
+
+  <script>
+    const scene = document.querySelector('a-scene');
+    const hint = document.getElementById('hint');
+
+    scene.addEventListener('arReady', () => {
+      hint.textContent = 'กล้องพร้อมแล้ว กรุณาหันหน้าเข้าหากล้อง';
+    });
+
+    scene.addEventListener('arError', (event) => {
+      console.error('Face Tracking error:', event);
+      hint.textContent =
+        'เปิดกล้องไม่สำเร็จ กรุณาอนุญาตการใช้กล้องและลองใหม่';
+    });
+
+    document.getElementById('glasses').addEventListener(
+      'model-loaded',
+      () => console.log('Heart glasses loaded')
+    );
+
+    document.getElementById('hat').addEventListener(
+      'model-loaded',
+      () => console.log('Pirate hat loaded')
+    );
+
+    document.getElementById('glasses').addEventListener(
+      'model-error',
+      () => console.error('Failed to load heart-shaped_glasses.glb')
+    );
+
+    document.getElementById('hat').addEventListener(
+      'model-error',
+      () => console.error('Failed to load pirate_hat.glb')
+    );
+  </script>
+</body>
+</html>
