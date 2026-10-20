@@ -16,7 +16,7 @@
       height: 100%;
       overflow: hidden;
       font-family: Arial, sans-serif;
-      /* สำคัญ: ห้ามใส่ background ที่ html/body ไม่งั้นบังวิดีโอกล้อง */
+      /* ห้ามใส่ background ที่ html/body ไม่งั้นบังวิดีโอกล้อง */
     }
 
     #ar-container {
@@ -26,7 +26,7 @@
       width: 100%;
       height: 100%;
       overflow: hidden;
-      z-index: 0;            /* สร้าง stacking context ให้วิดีโอ (z-index ติดลบ) แสดงได้ */
+      z-index: 0;
     }
 
     #hint {
@@ -59,12 +59,28 @@
       font-size: 16px;
       cursor: pointer;
     }
+
+    #tuner {
+      display: none;
+      position: fixed;
+      left: 12px;
+      bottom: 12px;
+      z-index: 9999;
+      padding: 10px 14px;
+      background: rgba(0, 0, 0, 0.75);
+      color: #fff;
+      font: 12px/1.6 monospace;
+      border-radius: 10px;
+      white-space: pre;
+      pointer-events: none;
+    }
   </style>
 </head>
 
 <body>
   <div id="hint">กำลังโหลด Face Tracking...</div>
   <button id="retryButton">โหลดหน้าเว็บใหม่</button>
+  <div id="tuner"></div>
 
   <div id="ar-container">
     <a-scene
@@ -82,60 +98,161 @@
 
       <a-camera active="false" position="0 0 0"></a-camera>
 
-      <!-- เพิ่มแสง ให้โมเดลไม่มืด -->
       <a-light type="ambient" intensity="1.2"></a-light>
       <a-light type="directional" intensity="0.8" position="0 1 1"></a-light>
 
-      <!-- แว่นหัวใจ: กึ่งกลางระหว่างดวงตา -->
+      <!-- แว่นหัวใจ: anchor กลางดวงตา -->
       <a-entity mindar-face-target="anchorIndex: 168">
-        <a-gltf-model
-          id="glasses"
-          src="#heartGlasses"
-          position="0 0 0"
-          rotation="0 0 0"
-          scale="0.3 0.3 0.3">
-        </a-gltf-model>
+        <a-entity id="glassesPivot">
+          <a-gltf-model id="glassesModel" src="#heartGlasses"></a-gltf-model>
+        </a-entity>
       </a-entity>
 
-      <!-- หมวกตำรวจ: หน้าผาก -->
+      <!-- หมวกตำรวจ: anchor หน้าผาก/ศีรษะ -->
       <a-entity mindar-face-target="anchorIndex: 10">
-        <a-gltf-model
-          id="policeHatModel"
-          src="#policeHat"
-          position="0 0.2 0"
-          rotation="0 0 0"
-          scale="0.3 0.3 0.3">
-        </a-gltf-model>
+        <a-entity id="hatPivot">
+          <a-gltf-model id="hatModel" src="#policeHat"></a-gltf-model>
+        </a-entity>
       </a-entity>
     </a-scene>
   </div>
 
   <script>
+    /* ============================================================
+       ค่าตั้งต้น (แก้ตรงนี้ได้)
+       scale = ขนาดโมเดล
+       pos   = ตำแหน่งเลื่อน [x, y, z] หน่วยเป็นสัดส่วนของ "ความกว้างแว่น"
+               (+x ขวา, +y ขึ้น, +z เข้าหากล้อง)
+       rot   = หมุน [x, y, z] เป็นองศา
+       ============================================================ */
+    const CONFIG = {
+      glasses: { scale: 0.15, pos: [0, 0, 0],       rot: [0, 0, 0] },
+      hat:     { scale: 0.55, pos: [0, 0.05, -0.3], rot: [0, -65, 0] }
+    };
+    /* ถ้าหมวกหมุนผิดทิศ (ปีกหมวกไปทางด้านข้างมากขึ้น) ให้เปลี่ยน -65 เป็น 65 */
+
+    const THREE = AFRAME.THREE;
     const scene = document.querySelector("a-scene");
     const hint = document.getElementById("hint");
     const retryButton = document.getElementById("retryButton");
+    const tuner = document.getElementById("tuner");
 
     retryButton.addEventListener("click", () => window.location.reload());
 
     scene.addEventListener("loaded", () => {
       hint.textContent = "กำลังเริ่มกล้อง กรุณาอนุญาตการใช้กล้อง";
     });
-
     scene.addEventListener("arReady", () => {
       hint.textContent = "กล้องพร้อมแล้ว กรุณาหันหน้าเข้าหากล้อง";
       retryButton.style.display = "none";
     });
-
     scene.addEventListener("arError", (event) => {
       console.error("MindAR error:", event);
       hint.textContent = "เริ่มกล้องไม่สำเร็จ กรุณาตรวจสอบสิทธิ์กล้อง";
       retryButton.style.display = "block";
     });
 
-    ["glasses", "policeHatModel"].forEach((id) => {
-      const el = document.getElementById(id);
-      el.addEventListener("model-loaded", () => console.log(id, "loaded"));
-      el.addEventListener("model-error", (e) => console.error(id, "failed", e));
+    /* ---------- จัดวางโมเดลอัตโนมัติ ---------- */
+    const parts = {
+      glasses: { model: document.getElementById("glassesModel"), pivot: document.getElementById("glassesPivot"), box: null },
+      hat:     { model: document.getElementById("hatModel"),     pivot: document.getElementById("hatPivot"),     box: null }
+    };
+    let U = 1; // ความกว้างแว่นในหน่วยของใบหน้า ใช้เป็นหน่วยอ้างอิงของ pos
+
+    function measure(key) {
+      const p = parts[key];
+      const obj = p.model.getObject3D("mesh");
+      if (!obj) return;
+      const clone = obj.clone();
+      clone.updateMatrixWorld(true);
+      p.box = new THREE.Box3().setFromObject(clone);
+      if (parts.glasses.box && parts.hat.box) layoutAll();
+    }
+
+    function applyPart(key) {
+      const p = parts[key], c = CONFIG[key], b = p.box;
+      if (!b) return;
+      const center = b.getCenter(new THREE.Vector3());
+      const s = c.scale;
+
+      // เลื่อนโมเดลให้จุดอ้างอิงอยู่ตรงกลาง
+      // แว่น: กึ่งกลางแกน x,y | หมวก: กึ่งกลางด้านล่าง
+      let ox, oy, oz;
+      if (key === "glasses") { ox = -center.x; oy = -center.y; oz = 0; }
+      else                   { ox = -center.x; oy = -b.min.y;  oz = -center.z; }
+
+      p.model.setAttribute("scale", { x: s, y: s, z: s });
+      p.model.setAttribute("position", { x: ox * s, y: oy * s, z: oz * s });
+
+      p.pivot.setAttribute("position", { x: c.pos[0] * U, y: c.pos[1] * U, z: c.pos[2] * U });
+      p.pivot.setAttribute("rotation", { x: c.rot[0], y: c.rot[1], z: c.rot[2] });
+    }
+
+    function layoutAll() {
+      const gSize = parts.glasses.box.getSize(new THREE.Vector3());
+      U = gSize.x * CONFIG.glasses.scale;
+      applyPart("glasses");
+      applyPart("hat");
+      showTuner();
+    }
+
+    parts.glasses.model.addEventListener("model-loaded", () => measure("glasses"));
+    parts.hat.model.addEventListener("model-loaded", () => measure("hat"));
+    parts.glasses.model.addEventListener("model-error", (e) => console.error("แว่นโหลดไม่สำเร็จ", e));
+    parts.hat.model.addEventListener("model-error", (e) => console.error("หมวกโหลดไม่สำเร็จ", e));
+
+    /* ---------- โหมดจูน: กด T เพื่อเปิด/ปิด ---------- */
+    let tuning = false;
+    let cur = "glasses";
+    const f = (n) => (+n).toFixed(3);
+
+    function showTuner() {
+      if (!tuning) { tuner.style.display = "none"; return; }
+      tuner.style.display = "block";
+      const g = CONFIG.glasses, h = CONFIG.hat;
+      tuner.textContent =
+`กำลังจูน: ${cur === "glasses" ? "แว่น" : "หมวก"}  (กด 1 = แว่น, 2 = หมวก, T = ปิด)
+ลูกศร = ซ้าย/ขวา/ขึ้น/ลง | W/S = เข้า/ออก
+Q/E = หมุนซ้ายขวา(Y) | R/F = ก้ม/เงย(X) | Z/C = เอียง(Z) | +/- = ขนาด
+
+คัดลอกค่านี้ไปใส่ CONFIG:
+glasses: { scale: ${f(g.scale)}, pos: [${f(g.pos[0])}, ${f(g.pos[1])}, ${f(g.pos[2])}], rot: [${g.rot.map(Math.round)}] },
+hat:     { scale: ${f(h.scale)}, pos: [${f(h.pos[0])}, ${f(h.pos[1])}, ${f(h.pos[2])}], rot: [${h.rot.map(Math.round)}] }`;
+    }
+
+    window.addEventListener("keydown", (e) => {
+      const k = e.key.toLowerCase();
+      if (k === "t") { tuning = !tuning; showTuner(); return; }
+      if (!tuning) return;
+      if (k === "1") { cur = "glasses"; showTuner(); return; }
+      if (k === "2") { cur = "hat"; showTuner(); return; }
+
+      const c = CONFIG[cur];
+      const mv = 0.02, rt = 5;
+      if (e.key === "ArrowLeft")       c.pos[0] -= mv;
+      else if (e.key === "ArrowRight") c.pos[0] += mv;
+      else if (e.key === "ArrowUp")    c.pos[1] += mv;
+      else if (e.key === "ArrowDown")  c.pos[1] -= mv;
+      else if (k === "w") c.pos[2] += mv;
+      else if (k === "s") c.pos[2] -= mv;
+      else if (k === "q") c.rot[1] -= rt;
+      else if (k === "e") c.rot[1] += rt;
+      else if (k === "r") c.rot[0] -= rt;
+      else if (k === "f") c.rot[0] += rt;
+      else if (k === "z") c.rot[2] -= rt;
+      else if (k === "c") c.rot[2] += rt;
+      else if (e.key === "+" || e.key === "=") c.scale *= 1.05;
+      else if (e.key === "-") c.scale /= 1.05;
+      else return;
+
+      e.preventDefault();
+      // ถ้าปรับขนาดแว่น หน่วยอ้างอิง U จะเปลี่ยนตาม
+      if (parts.glasses.box) {
+        U = parts.glasses.box.getSize(new THREE.Vector3()).x * CONFIG.glasses.scale;
+      }
+      applyPart("glasses");
+      applyPart("hat");
+      showTuner();
     });
   </script>
 </body>
